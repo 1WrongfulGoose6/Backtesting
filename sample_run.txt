@@ -1,0 +1,17 @@
+PS E:\Ashwin\importantFiles\Programming Projects\Backtesting> & C:/Users/Ashwin/AppData/Local/Programs/Python/Python311/python.exe "e:/Ashwin/importantFiles/Programming Projects/Backtesting/BackTest.py/fileMerger.py"
+Enter the Symbol you want to fetch: amd
+Enter the start date in dd/mm/yyyy: 1/6/2025
+Enter the end date in dd/mm/yyyy: 15/6/2025
+Enter the chunks of data (in days): 5
+You want to fetch 1m aggregate data of AMD from 2025-06-01 to 2025-06-15 in chunks of 5 days. Type Yes to continue or No to exit
+yes
+fetching...
+
+Saved: AMD_2025-06-01_2025-06-06.csv
+Saved: AMD_2025-06-07_2025-06-12.csv
+Saved: AMD_2025-06-13_2025-06-15.csv
+Data transfer completed.
+
+Grabbing all CSVs...
+Merging all CSVs...
+Bulk file succesfully saved as AMD_merged_data.csv
