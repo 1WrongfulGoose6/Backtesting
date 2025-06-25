@@ -38,35 +38,42 @@ class emaCross(Strategy):
         # close old order and buy long
         if pd.isna(self.ema9[-1]) or pd.isna(self.ema21[-1]):
             return
+        current_index = len(self.data.Close) - 1
+        self.htfBullish = self.data.df['HTFSig'].iloc[current_index]
         price = self.data.Close[-1]
         sl_pct = 0.03  # 2% Stop Loss
         tp_pct = 0.15  # 4% Take Profit
         trail_amount = 1.0 
     
 
-        
         if crossover(self.ema9, self.ema21):
             self.position.close()
-            stoploss = price * (1-sl_pct)
-            takeprofit = price * (1 + tp_pct)
-            self.buy()
+            if (self.htfBullish):
+                print("True condition triggerd")
+                stoploss = price * (1-sl_pct)
+                takeprofit = price * (1 + tp_pct)
+                self.buy(sl=stoploss, tp=takeprofit)
+
         # close old order and buy short
         elif crossover(self.ema21, self.ema9):
             self.position.close()
-            stoploss = price * (1 + sl_pct)
-            takeprofit = price * (1 - tp_pct)
-            self.sell()
+            if not (self.htfBullish):
+                print("False condition triggerd")
+                stoploss = price * (1 + sl_pct)
+                takeprofit = price * (1 - tp_pct)
+                self.sell(sl=stoploss, tp=takeprofit)
 
 # Give user option to change file names
-path = input("Please enter file name (with csv): ")
+# path = input("Please enter file name (with csv): ")
+path = "SPY_2024-01-01_2024-01-04.csv"
 # "SPY_2024-01-01_2024-01-04.csv" --sample file
-aggData = pd.read_csv(path, parse_dates=['timestamp'])
-aggData.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
+ltfData = pd.read_csv(path, parse_dates=['timestamp'])
+ltfData.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
                        'close': 'Close', 'volume': 'Volume'}, inplace=True)
-aggData.set_index('timestamp', inplace=True)
+ltfData.set_index('timestamp', inplace=True)
 
-# for resampling data
-aggData = aggData.resample('2min').agg({
+# for resampling data into Higher Time Frame 
+htfData = ltfData.resample('30min').agg({
     'Open': 'first',
     'High': 'max',
     'Low': 'min',
@@ -74,6 +81,15 @@ aggData = aggData.resample('2min').agg({
     'Volume': 'sum'
 }).dropna()
 
-bt = Backtest(aggData, emaCross, cash=1000, commission=.002)
+# Recreate EMA's and convert them into a signal for the Lower Time Frame df using reindexing
+htfData['EMA9']= ta.ema(htfData['Close'], length=9)
+htfData['EMA21']= ta.ema(htfData['Close'], length=21)
+htfData['HTFSignal'] = htfData['EMA9'] > htfData['EMA21']
+ltfData['HTFSig'] = htfData['HTFSignal'].reindex(ltfData.index, method='ffill')
+
+bt = Backtest(ltfData, emaCross, cash=1000, commission=.002)
 output = bt.run()
 bt.plot()
+
+# print(htfData)
+# print(ltfData)
