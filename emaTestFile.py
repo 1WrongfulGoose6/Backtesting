@@ -3,20 +3,15 @@ from backtesting.lib import crossover
 from backtesting.lib import resample_apply
 from datetime import time
 
-import numpy as np
 import pandas as pd
 import pandas_ta as ta # Using panda's TA lib
 from backtesting.test import GOOG #Google test data between 08/2004 -> 05/2009
 
-# trend indicators
+# delcaring all indicator functions to be used during simulation
 def EMA9(x):
     return ta.ema(pd.Series(x), length=9).to_numpy()
 def EMA21(x):
     return ta.ema(pd.Series(x), length=21).to_numpy()
-def SuperTrend(High, Low, Close):
-     return ta.supertrend(pd.Series(High), pd.Series(Low), pd.Series(Close))
-
-# momentum indicators
 def RSI(x):
     return ta.rsi(pd.Series(x), length=14).to_numpy()
 def MACDLine(x):
@@ -25,23 +20,14 @@ def MACDHist(x):
     return ta.macd(pd.Series(x))['MACDh_12_26_9'].to_numpy()
 def MACDSig(x):
     return ta.macd(pd.Series(x))['MACDs_12_26_9'].to_numpy()
-
-# volatility indicators
-def ADX(High, Low, Close):
-    return ta.adx(pd.Series(High), pd.Series(Low), pd.Series(Close))
-
-# volume indicators
-def VWAP(x):
-     return ta.vwap()
-
-
 def badTimeToTrade(current_time):
     # Return True if NOT in the trading window
     if time(9, 30) <= current_time <= time(13, 15):
         return False  # Good time to trade
     return True  # Outside trading window → skip
 
-class emaCross(Strategy):
+
+class BaseEMACrossover(Strategy):
 
     def init(self):
         # Trend indicators
@@ -53,48 +39,47 @@ class emaCross(Strategy):
         self.macd = self.I(MACDLine, self.data.Close) #macd has 3 signals 
         self.macd_hist = self.I(MACDHist, self.data.Close)
         self.macd_signal = self.I(MACDSig, self.data.Close)
-        self.atr = self.I(lambda h, l, c: ta.atr(pd.Series(h), pd.Series(l), pd.Series(c), length=14).to_numpy(), self.data.High, self.data.Low, self.data.Close)
-        
-        self.adx = self.I(ADX, self.data.High, self.data.Low, self.data.Close)
 
     def next(self):
         # close old order and buy long
         if pd.isna(self.ema9[-1]) or pd.isna(self.ema21[-1]):
             return
-        # current_index = len(self.data.Close) - 1
-        # self.htfBullish = self.data.df['HTFSig'].iloc[current_index]
+        current_index = len(self.data.Close) - 1
+        self.htfBullish = self.data.df['HTFSig'].iloc[current_index]
         current_time = self.data.df.index[len(self.data.Close) - 1].time()
-        
-        # if badTimeToTrade(current_time):
-        #     return  # Skip this candle
-        
-        current_adx = self.adx[-1]  # current ADX value
-        if current_adx < 20:
-        # skip or reduce position size because of weak trend
-            return
+        price = self.data.Close[-1]
 
-        # Long
+
+        if current_time >= pd.to_datetime("13:15").time():
+            if self.position:
+                print("Overnight Position closed.")
+                self.position.close()
+
+        # current_time = self.data.df.index[self.i].time()
+        if badTimeToTrade(current_time):
+            print("Skipping", current_time, "due to outside trading window.")
+            return  # Skip this candle
+        else:
+            print("Trading at", current_time)
+
         if crossover(self.ema9, self.ema21):
-            # if (self.htfBullish):
-                stoploss = self.data.Close[-1] - self.atr[-1]
-                takeprofit = self.data.Close[-1] + 2 * self.atr[-1]
-                self.buy(sl=stoploss, tp=takeprofit, size=1)
-                print("\n",f"Long Entered {current_time} with sl:{stoploss:.2f}, tp:{takeprofit:.2f}")
+            self.position.close()
+            if (self.htfBullish):
+                print("Bullish condition triggerd")
+                self.buy()
 
-        # Short
+        # close old order and buy short
         elif crossover(self.ema21, self.ema9):
-            # if not (self.htfBullish):
-                stoploss = self.data.Close[-1] + self.atr[-1]
-                takeprofit = self.data.Close[-1] - 2 * self.atr[-1]
-                print("\n",f"Short Entered {current_time} with sl:{stoploss:.2f}, tp:{takeprofit:.2f}")
-                self.sell(sl=stoploss, tp=takeprofit, size=1)
+            self.position.close()
+            if not (self.htfBullish):
+                print("Bearish condition triggerd")
+                self.sell()
 
 
 # Give user option to change file names
 # path = input("Please enter file name (with csv): ")
-path = "SPY_2025-06-13_2025-06-16.csv"
+path = "SPY_2025-03-09_2025-03-14.csv"
 # "SPY_2024-01-01_2024-01-04.csv" --sample file
-# "SPY_2025-03-09_2025-03-14.csv"
 ltfData = pd.read_csv(path, parse_dates=['timestamp'])
 ltfData.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
                        'close': 'Close', 'volume': 'Volume'}, inplace=True)
@@ -102,7 +87,7 @@ ltfData.set_index('timestamp', inplace=True)
 
 # for resampling data into Higher Time Frame 
 ltfData = ltfData.between_time("9:30", "16:00")
-htfData = ltfData.resample('1h').agg({
+htfData = ltfData.resample('1H').agg({
     'Open': 'first',
     'High': 'max',
     'Low': 'min',
@@ -117,10 +102,9 @@ htfData.dropna(subset=["EMA9", "EMA21"], inplace=True)
 htfData['HTFSignal'] = htfData['EMA9'] > htfData['EMA21']
 ltfData['HTFSig'] = htfData['HTFSignal'].reindex(ltfData.index, method='ffill')
 
-bt = Backtest(GOOG, emaCross, cash=100000, commission=.002, trade_on_close=True)
+bt = Backtest(ltfData, BaseEMACrossover, cash=10000, commission=.002)
 output = bt.run()
 bt.plot()
-print(output)
 
 # print(htfData)
 # print(ltfData)
