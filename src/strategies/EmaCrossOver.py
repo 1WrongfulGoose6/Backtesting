@@ -7,6 +7,11 @@ import pandas as pd
 import pandas_ta as ta # Using panda's TA lib
 from backtesting.test import GOOG #Google test data between 08/2004 -> 05/2009
 
+def run(df):
+    bt = Backtest(df, BaseEMACrossover, cash=100000, commission=.002, trade_on_close=True)
+    stats = bt.run()
+    return bt, stats
+
 # delcaring all indicator functions to be used during simulation
 def EMA9(x):
     return ta.ema(pd.Series(x), length=9).to_numpy()
@@ -77,34 +82,34 @@ class BaseEMACrossover(Strategy):
 
 
 # Give user option to change file names
-# path = input("Please enter file name (with csv): ")
-path = "SPY_2025-03-09_2025-03-14.csv"
-# "SPY_2024-01-01_2024-01-04.csv" --sample file
-ltfData = pd.read_csv(path, parse_dates=['timestamp'])
-ltfData.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
-                       'close': 'Close', 'volume': 'Volume'}, inplace=True)
-ltfData.set_index('timestamp', inplace=True)
+# # path = input("Please enter file name (with csv): ")
+# path = "SPY_2025-03-09_2025-03-14.csv"
+# # "SPY_2024-01-01_2024-01-04.csv" --sample file
+# ltfData = pd.read_csv(path, parse_dates=['timestamp'])
+# ltfData.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
+#                        'close': 'Close', 'volume': 'Volume'}, inplace=True)
+# ltfData.set_index('timestamp', inplace=True)
 
-# for resampling data into Higher Time Frame 
-ltfData = ltfData.between_time("9:30", "16:00")
-htfData = ltfData.resample('1H').agg({
-    'Open': 'first',
-    'High': 'max',
-    'Low': 'min',
-    'Close': 'last',
-    'Volume': 'sum'
-}).dropna()
+# # for resampling data into Higher Time Frame 
+# ltfData = ltfData.between_time("9:30", "16:00")
+# htfData = ltfData.resample('1H').agg({
+#     'Open': 'first',
+#     'High': 'max',
+#     'Low': 'min',
+#     'Close': 'last',
+#     'Volume': 'sum'
+# }).dropna()
 
-# Recreate EMA's and convert them into a signal for the Lower Time Frame df using reindexing
-htfData['EMA9']= ta.ema(htfData['Close'], length=9)
-htfData['EMA21']= ta.ema(htfData['Close'], length=21)
-htfData.dropna(subset=["EMA9", "EMA21"], inplace=True)
-htfData['HTFSignal'] = htfData['EMA9'] > htfData['EMA21']
-ltfData['HTFSig'] = htfData['HTFSignal'].reindex(ltfData.index, method='ffill')
+# # Recreate EMA's and convert them into a signal for the Lower Time Frame df using reindexing
+# htfData['EMA9']= ta.ema(htfData['Close'], length=9)
+# htfData['EMA21']= ta.ema(htfData['Close'], length=21)
+# htfData.dropna(subset=["EMA9", "EMA21"], inplace=True)
+# htfData['HTFSignal'] = htfData['EMA9'] > htfData['EMA21']
+# ltfData['HTFSig'] = htfData['HTFSignal'].reindex(ltfData.index, method='ffill')
 
-bt = Backtest(ltfData, BaseEMACrossover, cash=10000, commission=.002)
-output = bt.run()
-bt.plot()
+# bt = Backtest(ltfData, BaseEMACrossover, cash=10000, commission=.002)
+# output = bt.run()
+# bt.plot()
 
-# print(htfData)
-# print(ltfData)
+# # print(htfData)
+# # print(ltfData)
