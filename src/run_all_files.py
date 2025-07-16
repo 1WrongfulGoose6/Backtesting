@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime
-from strategies import strategy1, EmaCrossOver
+from strategies import ORB, master_file
 
 # path = input("Please enter file name (with csv): ")
 # path = "SPY_2025-03-09_2025-03-14.csv"
@@ -18,8 +18,8 @@ output_dir = f"outputs/results_{timestamp}"
 os.makedirs(output_dir, exist_ok=True)
 
 strategies = {
-    "EMA9/21": EmaCrossOver.run,
-    "Bolinger": strategy1.run
+    "EMA9/21": master_file.run,
+    "Bolinger": ORB.run
 }
 
 # for each name/fn in dict
