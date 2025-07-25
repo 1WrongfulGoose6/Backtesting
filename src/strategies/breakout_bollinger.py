@@ -3,70 +3,86 @@ from backtesting.lib import crossover
 from backtesting.lib import resample_apply
 from datetime import time
 
+import numpy as np
 import pandas as pd
 import pandas_ta as ta # Using panda's TA lib
 from backtesting.test import GOOG #Google test data between 08/2004 -> 05/2009
 
 def run(df):
-    bt = Backtest(df, bollinger_breakout, cash=100000, commission=.002, trade_on_close=True)
+    bt = Backtest(df, bollinger_breakout, cash=100000, commission=.000, trade_on_close=True)
     stats = bt.run()
     return bt, stats
 
 # delcaring all indicator functions to be used during simulation
 def BollingerBands(Close):
-    bb = ta.bbands(Close, length=22, std=2)
-    if bb is not None:
-            return bb['BBL_20_2.0'].to_numpy(), bb['BBM_20_2.0'].to_numpy(), bb['BBU_20_2.0'].to_numpy()
-    else:
-        # Return NaN arrays of the same length if BBs can't be calculated yet
+    Close = pd.Series(Close)
+    bb = ta.bbands(Close, length=20, std=2)
+
+    if bb is None or bb.isnull().all().any():
+        # Return 3 NaN arrays of same length
         n = len(Close)
-        return [float('nan')] * n, [float('nan')] * n, [float('nan')] * n
+        return np.full(n, np.nan), np.full(n, np.nan), np.full(n, np.nan)
 
-def badTimeToTrade(current_time):
-    # Return True if NOT in the trading window
-    if time(9, 30) <= current_time <= time(13, 15):
-        return False  # Good time to trade
-    return True  # Outside trading window → skip
+    return (
+        bb['BBL_20_2.0'].to_numpy(),
+        bb['BBM_20_2.0'].to_numpy(),
+        bb['BBU_20_2.0'].to_numpy()
+    )
 
+def RSI(x):
+    return ta.rsi(pd.Series(x), length=14).to_numpy()
 
+def bad_to_trade(current_time):
+    if time(9,30) <= current_time <= time(12,00):
+        return False
+    return True
+
+# Breakout Strategy which defines the range in BB bars  
+# Style: Breakout + volatility
 class bollinger_breakout(Strategy):
 
     def init(self):
         # Trend indicators
-        self.bb = self.I(BollingerBands, self.data.Close)
+        self.bb_lower = self.I(lambda x: BollingerBands(x)[0], self.data.Close)
+        self.bb_mid = self.I(lambda x: BollingerBands(x)[1], self.data.Close)
+        self.bb_upper = self.I(lambda x: BollingerBands(x)[2], self.data.Close)
+        self.rsi = self.I(RSI, self.data.Close)
         
     def next(self):
-        # close old order and buy long
-        if pd.isna(self.ema9[-1]) or pd.isna(self.ema21[-1]):
-            return
         current_index = len(self.data.Close) - 1
-        self.htfBullish = self.data.df['HTFSig'].iloc[current_index]
         current_time = self.data.df.index[len(self.data.Close) - 1].time()
         price = self.data.Close[-1]
 
-
-        if current_time >= pd.to_datetime("13:15").time():
+        if bad_to_trade(current_time):
             if self.position:
-                print("Overnight Position closed.")
                 self.position.close()
+            return
+        
+        # check if in squeeze
+        lower = self.bb_lower[-1]
+        middle = self.bb_mid[-1]
+        upper = self.bb_upper[-1]
 
-        # current_time = self.data.df.index[self.i].time()
-        if badTimeToTrade(current_time):
-            print("Skipping", current_time, "due to outside trading window.")
-            return  # Skip this candle
-        else:
-            print("Trading at", current_time)
+        if any(pd.isna([lower, middle, upper])):
+            return
+        
+        bb_width = self.bb_upper[-20:] - self.bb_lower[-20:]
+        current_width = upper - lower
+        min_width = bb_width.min()
 
-        if crossover(self.ema9, self.ema21):
-            self.position.close()
-            if (self.htfBullish):
-                print("Bullish condition triggerd")
-                self.buy()
+        if current_width <= min(bb_width)  and not self.position:
+            if price > upper and self.rsi > 50 and self.data.Volume[-1] > 20000:
+                risk = 1.5 * current_width  # dynamic based on market
+                sl = price - risk
+                tp = price + 2 * risk  # aim for 1:1.3 to 1:2 RRR
+                self.buy(sl=sl, tp=tp, size=1)
 
-        # close old order and buy short
-        elif crossover(self.ema21, self.ema9):
-            self.position.close()
-            if not (self.htfBullish):
-                print("Bearish condition triggerd")
-                self.sell()
+        elif current_width <= min(bb_width) and not self.position:
+            if price < lower and self.rsi < 50 and self.data.Volume[-1] > 20000:
+                risk = 1.5 * current_width  # dynamic based on market
+                sl = price + risk
+                tp = price - 2 * risk  # aim for 1:1.3 to 1:2 RRR
+                self.sell(sl=sl, tp=tp, size=1)
+
+     
 

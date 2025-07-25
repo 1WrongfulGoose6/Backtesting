@@ -56,14 +56,14 @@ class orb15(Strategy):
             return
 
         if self.data.ORB_high[-1] < price and not self.position:
-             sl = price - self.atr[-1]
-             tp = price + 2 * self.atr[-1]
+             sl = price - 10 * self.atr[-1]
+             tp = price + 20 * self.atr[-1]
              self.buy(sl=sl, tp=tp, size=1)
              self.last_traded_date = current_date
         
         if self.data.ORB_low[-1] > price and not self.position:
-             sl = price + self.atr[-1]
-             tp = price - 2 * self.atr[-1]
+             sl = price + 10* self.atr[-1]
+             tp = price - 20 * self.atr[-1]
              self.sell(sl=sl, tp=tp, size=1)
              self.last_traded_date = current_date
         

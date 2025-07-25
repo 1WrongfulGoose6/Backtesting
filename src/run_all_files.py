@@ -1,12 +1,13 @@
 import os
 import pandas as pd
 from datetime import datetime
-from strategies import breakout_orb15, master_file
+from strategies import breakout_orb15, breakout_bollinger, master_file
 
-# path = input("Please enter file name (with csv): ")
-# path = "SPY_2025-03-09_2025-03-14.csv"
-# "SPY_2024-01-01_2024-01-04.csv" --sample file
-df = pd.read_csv('data\SPY\SPY_2024-01-17_2024-01-20.csv', parse_dates=True, index_col='timestamp')
+
+# "data\QQQ\QQQ_2024-01-25_2024-01-30.csv" --sample file
+# "data\AMD\AMD_merged_data.csv" --sample file
+# "data\SPY\SPY_2024-01-17_2024-01-20.csv" --sample file
+df = pd.read_csv('data\AMD\AMD_merged_data.csv', parse_dates=True, index_col='timestamp')
 df.dropna(inplace=True)
 
 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 
@@ -19,7 +20,8 @@ os.makedirs(output_dir, exist_ok=True)
 
 strategies = {
     # "EMA9/21": master_file.run,
-    "ORB15": breakout_orb15.run
+    # "ORB15": breakout_orb15.run
+    "Bollinger_Squeeze" : breakout_bollinger.run
 }
 
 # for each name/fn in dict
