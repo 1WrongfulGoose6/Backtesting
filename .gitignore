@@ -1,9 +1,7 @@
 venv
 outputs/
 polygon_api_key.txt
-data\AMD
-data\QQQ
-data\SPY
+data/
 src\strategies\__pycache__/
 
 

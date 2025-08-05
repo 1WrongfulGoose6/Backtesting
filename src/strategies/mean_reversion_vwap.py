@@ -9,9 +9,10 @@ import pandas_ta as ta # Using panda's TA lib
 from backtesting.test import GOOG #Google test data between 08/2004 -> 05/2009
 
 def run(df):
-    bt = Backtest(df, vwap_reversion, cash=100000, commission=.002, trade_on_close=True)
+    bt = Backtest(df, vwap_reversion, cash=100000, commission=.000, trade_on_close=True)
     stats = bt.run()
     return bt, stats
+
 
 # momentum indicators
 def RSI(x):
@@ -31,18 +32,7 @@ def VWAP(high, low, close, volume):
 
     vwap_series = ta.vwap(high=h, low=l, close=c, volume=v)
     return vwap_series.to_numpy()
-def DailyPOC(df):
-    df = df.copy()
-    df['Date'] = df.index.date
-    poc_list = []
 
-    for date, group in df.groupby('Date'):
-        # Use close prices or better: price buckets with volume sum
-        most_common_price = group['Close'].round(2).mode()
-        poc_value = most_common_price.iloc[0] if not most_common_price.empty else np.nan
-        poc_list.extend([poc_value] * len(group))
-
-    return np.array(poc_list)
 def POC_2hour(df):
     df = df.copy()
     df['TimeBin'] = df.index.floor('2H')  # Floor to the nearest 2-hour window
@@ -55,11 +45,10 @@ def POC_2hour(df):
 
     return np.array(poc_list)
 
-def badTimeToTrade(current_time):
-    # Return True if NOT in the trading window
-    if time(9, 30) <= current_time <= time(13, 15):
-        return False  # Good time to trade
-    return True  # Outside trading window → skip
+def bad_to_trade(current_time):
+    if time(9,30) <= current_time <= time(12,00):
+        return False
+    return True
 
 # Price reverts towards VWAP after being oversold/bought on RSI
 # Style: Mean reversion
@@ -74,39 +63,30 @@ class vwap_reversion(Strategy):
         
         VWAP.df_index = self.data.df.index  # make sure your index is datetime!
         self.vwap = self.I(VWAP, self.data.High, self.data.Low, self.data.Close, self.data.Volume)
-        self.poc = self.I(DailyPOC,self.data.df)
-        self.poc = self.I(POC_2hour,self.data.df)
+        # self.poc = self.I(POC_2hour,self.data.df)
 
         self.adx = self.I(ADX, self.data.High, self.data.Low, self.data.Close)
 
     def next(self):
-        # close old order and buy long
-        if pd.isna(self.ema9[-1]) or pd.isna(self.ema21[-1]):
-            return
-        # current_index = len(self.data.Close) - 1
-        # self.htfBullish = self.data.df['HTFSig'].iloc[current_index]
+        current_index = len(self.data.Close) - 1
         current_time = self.data.df.index[len(self.data.Close) - 1].time()
-        
-        # if badTimeToTrade(current_time):
-        #     return  # Skip this candle
-        
-        current_adx = self.adx[-1]  # current ADX value
-        if current_adx < 20:
-        # skip or reduce position size because of weak trend
-            return
+        price = self.data.Close[-1]
+        vwap = self.vwap[-1]
+        rsi = self.rsi[-1]
 
-        # Long
-        if crossover(self.ema9, self.ema21):
-            # if (self.htfBullish):
-                stoploss = self.data.Close[-1] - self.atr[-1]
-                takeprofit = self.data.Close[-1] + 2 * self.atr[-1]
-                self.buy(sl=stoploss, tp=takeprofit, size=1)
-                print("\n",f"Long Entered {current_time} with sl:{stoploss:.2f}, tp:{takeprofit:.2f}")
+        if current_time > time(2,30) and self.position:
+            self.position.close()
+         
+        if self.position:
+            if (self.position.is_long and price >= vwap) or (self.position.is_short and price <= vwap):
+                self.position.close()
 
-        # Short
-        elif crossover(self.ema21, self.ema9):
-            # if not (self.htfBullish):
-                stoploss = self.data.Close[-1] + self.atr[-1]
-                takeprofit = self.data.Close[-1] - 2 * self.atr[-1]
-                print("\n",f"Short Entered {current_time} with sl:{stoploss:.2f}, tp:{takeprofit:.2f}")
-                self.sell(sl=stoploss, tp=takeprofit, size=1)
+        # Only buy during awake hrs 
+        if not bad_to_trade(current_time):
+            # Long
+            if price < vwap * 0.997 and rsi < 35 and not self.position:
+                self.buy(sl=price - 0.5, tp=price + 1.0)
+
+            # Short
+            elif price > vwap * 1.007 and rsi > 65 and not self.position:
+                self.sell(sl=price + 0.5, tp=price - 1.0)
